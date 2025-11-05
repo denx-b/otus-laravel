@@ -1,0 +1,75 @@
+# docker-compose.dev.yml
+
+services:
+  php:
+    build:
+      context: .
+      dockerfile: docker/common/php-fpm/Dockerfile
+    container_name: otus-laravel-php
+    volumes:
+      - ./:/var/www/html
+      - php_fpm_sock:/var/run/php
+      - ./docker/common/php-fpm/pool.d/www.conf:/usr/local/etc/php-fpm.d/www.conf:ro
+      - ./docker/common/php-fpm/pool.d/zzz-override.conf:/usr/local/etc/php-fpm.d/zzz-override.conf:ro
+    environment:
+      WAIT_FOR_DB_HOST: db
+      WAIT_FOR_DB_PORT: 3306
+    depends_on:
+      - db
+      - redis
+    networks:
+      - appnet
+
+  nginx:
+    build:
+      context: docker/development/nginx
+      dockerfile: Dockerfile
+    container_name: otus-laravel-nginx
+    ports:
+      - "8080:80"
+    depends_on:
+      - php
+    volumes:
+      - ./:/var/www/html:ro
+      - php_fpm_sock:/var/run/php
+    networks:
+      - appnet
+
+  db:
+    image: mysql:8.4
+    container_name: otus-laravel-db
+    platform: linux/arm64/v8
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: app
+      MYSQL_USER: app
+      MYSQL_PASSWORD: app
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-proot"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    networks:
+      - appnet
+
+  redis:
+    image: valkey/valkey:7-alpine
+    container_name: valkey
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey_data:/data
+    command: ["valkey-server", "--save", "60", "1", "--loglevel", "warning"]
+
+networks:
+  appnet:
+    driver: bridge
+
+volumes:
+  db_data:
+  valkey_data:
+  php_fpm_sock:
